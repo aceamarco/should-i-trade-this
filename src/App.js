@@ -4,33 +4,35 @@ import 'animate.css';
 import Button from '@mui/material/Button';
 import {Grid} from '@mui/material';
 
-// The quiz has three kinds of questions, asked in this order:
+// The quiz has three kinds of questions. Every question adds to a points score,
+// and no single question decides the outcome on its own.
 //
-//   dealbreaker: any one "no" ends the quiz with a don't-trade verdict.
-//   reason:      a reason to make the trade. You need at least one.
-//   check:       how sound the decision is. Each "no" adds a red flag.
+//   foundation: basic financial footing. Worth 2 points each.
+//   reason:     a reason to make the trade. Worth 2 points each, but only your
+//               best REASONS_COUNTED reasons count, so you don't need all of them.
+//   check:      how sound the decision is. Worth 1 point each.
 //
 // For every question, `yes` is the answer that favors the trade and `no` is the
 // one that argues against it. `note` is what the results screen shows: a reason
-// found, a dealbreaker hit, or a red flag.
+// found, or a concern.
 const QUESTIONS = {
   buy: [
     {
-      type: 'dealbreaker',
+      type: 'foundation',
       question: "Will I need this money in the next 3 to 5 years?",
       yes: "No, it's long-term money",
       no: "I might need it",
       note: "You may need this money soon. Keep it somewhere safer."
     },
     {
-      type: 'dealbreaker',
+      type: 'foundation',
       question: "Do I have an emergency fund in place?",
       yes: "Yes",
       no: "No",
       note: "Build an emergency fund before investing."
     },
     {
-      type: 'dealbreaker',
+      type: 'foundation',
       question: "Do I have any high-interest debt, like credit card balances?",
       yes: "No",
       no: "Yes",
@@ -217,51 +219,49 @@ const QUESTIONS = {
 };
 
 const VERBS = {buy: "Buy", sell: "Sell"};
-
-// Returns true when the quiz should stop early and show results.
-function isFinished(questions, answers) {
-  if (answers.length === questions.length) return true;
-  const last = answers.length - 1;
-  if (last < 0) return false;
-  // A failed dealbreaker ends the quiz right away.
-  if (questions[last].type === 'dealbreaker' && !answers[last]) return true;
-  // After the last reason question, stop if no reason applied.
-  const lastReason = questions.map(q => q.type).lastIndexOf('reason');
-  if (last === lastReason) {
-    return !questions.some((q, i) => q.type === 'reason' && answers[i]);
-  }
-  return false;
-}
+const POINTS = {foundation: 2, reason: 2, check: 1};
+const REASONS_COUNTED = 2;
+const GO_THRESHOLD = 0.8;
+const CAUTION_THRESHOLD = 0.65;
 
 export function evaluate(action, questions, answers) {
   const pick = (type, value) =>
-    questions.filter((q, i) => q.type === type && i < answers.length && answers[i] === value).map(q => q.note);
+    questions.filter((q, i) => q.type === type && answers[i] === value).map(q => q.note);
+  const count = (type) => questions.filter(q => q.type === type).length;
 
-  const dealbreakers = pick('dealbreaker', false);
   const reasons = pick('reason', true);
+  const bigConcerns = pick('foundation', false);
   const flags = pick('check', false);
-  const verb = VERBS[action];
 
+  const earned =
+    (count('foundation') - bigConcerns.length) * POINTS.foundation +
+    Math.min(reasons.length, REASONS_COUNTED) * POINTS.reason +
+    (count('check') - flags.length) * POINTS.check;
+  const possible =
+    count('foundation') * POINTS.foundation +
+    Math.min(count('reason'), REASONS_COUNTED) * POINTS.reason +
+    count('check') * POINTS.check;
+  const score = earned / possible;
+
+  if (reasons.length === 0) {
+    flags.unshift(`No solid reason to ${action}.`);
+  }
+
+  const verb = VERBS[action];
   let verdict;
   let tone;
-  if (dealbreakers.length > 0) {
-    verdict = `Don't ${verb}`;
-    tone = 'stop';
-  } else if (reasons.length === 0) {
-    verdict = action === 'buy' ? "Don't Buy: There's No Real Reason To" : "Hold: There's No Solid Reason to Sell";
-    tone = 'stop';
-  } else if (flags.length === 0) {
+  if (score >= GO_THRESHOLD) {
     verdict = verb;
     tone = 'go';
-  } else if (flags.length <= 2) {
-    verdict = `${verb}, but Deal With the Red Flags First`;
+  } else if (score >= CAUTION_THRESHOLD) {
+    verdict = `Maybe ${verb}: Look at the Concerns First`;
     tone = 'caution';
   } else {
-    verdict = "Wait: Too Many Red Flags";
+    verdict = action === 'buy' ? "Don't Buy" : "Don't Sell: Hold";
     tone = 'stop';
   }
 
-  return {verdict, tone, dealbreakers, reasons, flags};
+  return {verdict, tone, score, reasons, bigConcerns, flags};
 }
 
 function NoteList({title, items, className}) {
@@ -315,17 +315,18 @@ function App() {
   const questions = QUESTIONS[action];
 
   // Results screen
-  if (isFinished(questions, answers)) {
-    const {verdict, tone, dealbreakers, reasons, flags} = evaluate(action, questions, answers);
+  if (answers.length === questions.length) {
+    const {verdict, tone, score, reasons, bigConcerns, flags} = evaluate(action, questions, answers);
 
     return (
       <div className="App">
         <Grid container spacing={2}>
           <Grid item xs={12}>
             <h1 className={`animate__animated animate__fadeIn verdict ${tone}`}>{verdict}</h1>
+            <p className="score">Score: {Math.round(score * 100)}% (80%+ to {action}, 65%+ for a maybe)</p>
           </Grid>
-          <NoteList title="Dealbreakers" items={dealbreakers} className="bad" />
           <NoteList title={`Reasons to ${action}`} items={reasons} className="good" />
+          <NoteList title="Big concerns" items={bigConcerns} className="bad" />
           <NoteList title="Red flags" items={flags} className="bad" />
           <Grid item xs={12}>
             <Button onClick={reset} variant="contained">Start Over</Button>

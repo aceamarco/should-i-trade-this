@@ -9,9 +9,13 @@ function answer(action, answers) {
   });
 }
 
-function startQuiz(action) {
-  render(<App />);
-  fireEvent.click(screen.getByText(action === 'buy' ? 'Buying' : 'Selling'));
+// Build an answer list: `fail` maps a question type to how many of that type get a "no".
+function answersWith(questions, fail = {}) {
+  const seen = {};
+  return questions.map(q => {
+    seen[q.type] = (seen[q.type] || 0) + 1;
+    return seen[q.type] > (fail[q.type] || 0);
+  });
 }
 
 test('asks whether you are buying or selling', () => {
@@ -19,40 +23,37 @@ test('asks whether you are buying or selling', () => {
   expect(screen.getByText(/buying or selling/i)).toBeInTheDocument();
 });
 
-test('a failed dealbreaker ends the buy quiz right away', () => {
-  startQuiz('buy');
-  answer('buy', [false]);
-  expect(screen.getByText("Don't Buy")).toBeInTheDocument();
+test('every question is asked, even after a foundation concern', () => {
+  render(<App />);
+  fireEvent.click(screen.getByText('Buying'));
+  const answers = answersWith(QUESTIONS.buy, { foundation: 1 });
+  answer('buy', answers);
+  expect(screen.getByText('Buy')).toBeInTheDocument();
   expect(screen.getByText(/need this money soon/i)).toBeInTheDocument();
 });
 
-test('one solid reason is enough to sell', () => {
-  startQuiz('sell');
-  const sell = QUESTIONS.sell;
-  // Only the first reason (broken thesis) applies; every check passes.
-  answer('sell', sell.map((q, i) => (q.type === 'reason' ? i === 0 : true)));
-  expect(screen.getByText('Sell')).toBeInTheDocument();
-  expect(screen.getByText(/thesis is broken/i)).toBeInTheDocument();
-});
-
-test('no reasons ends the sell quiz with a hold verdict', () => {
-  startQuiz('sell');
-  const reasonCount = QUESTIONS.sell.filter(q => q.type === 'reason').length;
-  answer('sell', Array(reasonCount).fill(false));
-  expect(screen.getByText(/Hold/)).toBeInTheDocument();
-});
-
-test('verdict gets more cautious as red flags add up', () => {
-  const qs = QUESTIONS.buy;
-  const withFailedChecks = (n) => {
-    let failed = 0;
-    return qs.map(q => {
-      if (q.type !== 'check') return true;
-      failed += 1;
-      return failed > n;
+test('no single question decides the outcome', () => {
+  for (const action of ['buy', 'sell']) {
+    const qs = QUESTIONS[action];
+    const perfect = qs.map(() => true);
+    qs.forEach((_, i) => {
+      const flipped = [...perfect];
+      flipped[i] = false;
+      // Flipping any one answer from a perfect quiz still gives at least a "maybe".
+      expect(evaluate(action, qs, flipped).tone).not.toBe('stop');
     });
-  };
-  expect(evaluate('buy', qs, withFailedChecks(0)).tone).toBe('go');
-  expect(evaluate('buy', qs, withFailedChecks(2)).tone).toBe('caution');
-  expect(evaluate('buy', qs, withFailedChecks(3)).tone).toBe('stop');
+  }
+});
+
+test('you do not need every sell reason', () => {
+  const qs = QUESTIONS.sell;
+  const reasonCount = qs.filter(q => q.type === 'reason').length;
+  expect(evaluate('sell', qs, answersWith(qs, { reason: reasonCount - 2 })).tone).toBe('go');
+});
+
+test('verdict gets more cautious as concerns add up', () => {
+  const qs = QUESTIONS.buy;
+  expect(evaluate('buy', qs, answersWith(qs)).tone).toBe('go');
+  expect(evaluate('buy', qs, answersWith(qs, { check: 5 })).tone).toBe('caution');
+  expect(evaluate('buy', qs, answersWith(qs, { foundation: 2, check: 4 })).tone).toBe('stop');
 });
