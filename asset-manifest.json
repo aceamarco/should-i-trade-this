@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/should-i-trade-this/static/css/main.6c015a13.css",
+    "main.js": "/should-i-trade-this/static/js/main.b1ecd367.js",
+    "static/js/453.061691bf.chunk.js": "/should-i-trade-this/static/js/453.061691bf.chunk.js",
+    "index.html": "/should-i-trade-this/index.html",
+    "main.6c015a13.css.map": "/should-i-trade-this/static/css/main.6c015a13.css.map",
+    "main.b1ecd367.js.map": "/should-i-trade-this/static/js/main.b1ecd367.js.map",
+    "453.061691bf.chunk.js.map": "/should-i-trade-this/static/js/453.061691bf.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.6c015a13.css",
+    "static/js/main.b1ecd367.js"
+  ]
+}
